@@ -1,0 +1,7 @@
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/buy"
+  to = "/.netlify/functions/buy"
+  status = 200
