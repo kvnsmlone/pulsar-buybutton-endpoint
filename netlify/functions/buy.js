@@ -71,7 +71,7 @@ exports.handler = async (event) => {
 
     // 3) Quantity rules
     const quantity = sku === 'PUL-30-SRV-2PAK'
-      ? 1
+      ? 2
       : Math.max(1, Number.isFinite(qtyParam) ? qtyParam : 1);
 
     // 4) Create cart on headless channel and request redirect URLs in one call
