@@ -39,6 +39,7 @@ exports.handler = async (event) => {
 
     const qs = event.queryStringParameters || {};
 
+    const afmc = qs.afmc;
     // -----------------------------
     // IMPORTANT FIX
     // -----------------------------
@@ -127,11 +128,19 @@ exports.handler = async (event) => {
     }
 
     // 5️⃣ Redirect to checkout
-    return {
-      statusCode: 302,
-      headers: { Location: checkoutUrl },
-      body: ''
-    };
+// 5️⃣ Redirect to checkout (with affiliate tracking)
+let finalCheckoutUrl = checkoutUrl;
+
+if (afmc) {
+  const separator = checkoutUrl.includes('?') ? '&' : '?';
+  finalCheckoutUrl = `${checkoutUrl}${separator}afmc=${encodeURIComponent(afmc)}`;
+}
+
+return {
+  statusCode: 302,
+  headers: { Location: finalCheckoutUrl },
+  body: ''
+};
 
   } catch (e) {
 
