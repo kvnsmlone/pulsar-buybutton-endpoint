@@ -38,7 +38,7 @@ exports.handler = async (event) => {
     const qs = event.queryStringParameters || {};
 
     // -----------------------------
-    // ✅ FIX: Cookie + URL fallback
+    // COOKIE + URL fallback
     // -----------------------------
     const cookieHeader = event.headers.cookie || '';
 
@@ -128,14 +128,17 @@ exports.handler = async (event) => {
     }
 
     // -----------------------------
-    // 5️⃣ FINAL REDIRECT (WITH AFMC)
+    // 🔥 FINAL FIX (PROPER URL HANDLING)
     // -----------------------------
     let finalCheckoutUrl = checkoutUrl;
 
     if (afmc) {
-      const separator = checkoutUrl.includes('?') ? '&' : '?';
-      finalCheckoutUrl = `${checkoutUrl}${separator}afmc=${encodeURIComponent(afmc)}`;
+      const url = new URL(checkoutUrl);
+      url.searchParams.set('afmc', afmc);
+      finalCheckoutUrl = url.toString();
     }
+
+    console.log("FINAL CHECKOUT URL:", finalCheckoutUrl);
 
     return {
       statusCode: 302,
