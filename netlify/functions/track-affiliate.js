@@ -1,9 +1,9 @@
 exports.handler = async (event) => {
-  console.log("🔥 WEBHOOK HIT");
-  console.log("BODY:", event.body);
-
   return {
     statusCode: 200,
-    body: "OK"
+    body: JSON.stringify({
+      message: "WEBHOOK HIT",
+      body: event.body
+    })
   };
 };
