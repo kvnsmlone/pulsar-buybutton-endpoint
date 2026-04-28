@@ -3,15 +3,14 @@
 //   https://<your-site>.netlify.app/buy?plan=single|1bag|2bag&qty=1
 //   (testing) https://<your-site>.netlify.app/buy?sku=PUL-30-SRV&qty=1
 
-// ---- Hard-coded NON-SECRETS ----
+// /netlify/functions/buy.js
+
 const STORE_HASH = 'rctyyem8fp';
 const CHANNEL_ID = 1778657;
 const API_BASE = `https://api.bigcommerce.com/stores/${STORE_HASH}/v3`;
 
-// ---- SECRET (Netlify env var) ----
 const ADMIN_TOKEN = process.env.BC_ADMIN_TOKEN;
 
-// ---- Plan → SKU map (long names + short slugs) ----
 const PLAN_TO_SKU = {
   'single order': 'PUL-30-SRV',
   '1 bag subscription': 'PUL-30-SRV-SUB',
@@ -25,7 +24,6 @@ const PLAN_TO_SKU = {
   double: 'PUL-30-SRV-2PAK',
 };
 
-// Optional modifier selections
 const MODS_BY_SKU = {};
 
 const norm = (s = '') => s.toLowerCase().trim();
@@ -39,26 +37,31 @@ exports.handler = async (event) => {
 
     const qs = event.queryStringParameters || {};
 
-    const afmc = qs.afmc;
     // -----------------------------
-    // IMPORTANT FIX
+    // ✅ FIX: Cookie + URL fallback
     // -----------------------------
-    // Default plan = SINGLE ORDER
-    // -----------------------------
+    const cookieHeader = event.headers.cookie || '';
 
+    function getCookie(name) {
+      const match = cookieHeader.match(new RegExp('(^|; )' + name + '=([^;]+)'));
+      return match ? match[2] : null;
+    }
+
+    const afmc = qs.afmc || getCookie('ld_affiliate');
+
+    // -----------------------------
+    // Plan logic
+    // -----------------------------
     const plan = norm(qs.plan || 'single');
-
     const qtyParam = parseInt(qs.qty || '1', 10);
-
     const skuParam = qs.sku;
 
     const sku =
       skuParam ||
       PLAN_TO_SKU[plan] ||
-      'PUL-30-SRV';   // fallback safety
+      'PUL-30-SRV';
 
-
-    // 1️⃣ Variant lookup by SKU
+    // 1️⃣ Variant lookup
     const vRes = await fetch(
       `${API_BASE}/catalog/variants?sku=${encodeURIComponent(sku)}&include_fields=id,product_id,sku`,
       {
@@ -77,21 +80,18 @@ exports.handler = async (event) => {
 
     const { id: variant_id, product_id } = vJson.data[0];
 
-
-    // 2️⃣ Build modifier selections
+    // 2️⃣ Modifiers
     let option_selections = MODS_BY_SKU[sku] || [];
 
     if (!option_selections.length) {
       option_selections = await getRequiredModifierSelections(product_id, sku);
     }
 
-
-    // 3️⃣ Quantity rules
+    // 3️⃣ Quantity
     const quantity =
       sku === 'PUL-30-SRV-2PAK'
         ? 2
         : Math.max(1, Number.isFinite(qtyParam) ? qtyParam : 1);
-
 
     // 4️⃣ Create cart
     const cRes = await fetch(
@@ -127,28 +127,27 @@ exports.handler = async (event) => {
       return json({ error: 'No checkout_url returned' }, 502);
     }
 
-    // 5️⃣ Redirect to checkout
-// 5️⃣ Redirect to checkout (with affiliate tracking)
-let finalCheckoutUrl = checkoutUrl;
+    // -----------------------------
+    // 5️⃣ FINAL REDIRECT (WITH AFMC)
+    // -----------------------------
+    let finalCheckoutUrl = checkoutUrl;
 
-if (afmc) {
-  const separator = checkoutUrl.includes('?') ? '&' : '?';
-  finalCheckoutUrl = `${checkoutUrl}${separator}afmc=${encodeURIComponent(afmc)}`;
-}
+    if (afmc) {
+      const separator = checkoutUrl.includes('?') ? '&' : '?';
+      finalCheckoutUrl = `${checkoutUrl}${separator}afmc=${encodeURIComponent(afmc)}`;
+    }
 
-return {
-  statusCode: 302,
-  headers: { Location: finalCheckoutUrl },
-  body: ''
-};
+    return {
+      statusCode: 302,
+      headers: { Location: finalCheckoutUrl },
+      body: ''
+    };
 
   } catch (e) {
-
     return json({
       error: 'Server error',
       detail: String(e?.message || e)
     }, 500);
-
   }
 };
 
@@ -208,11 +207,9 @@ async function getRequiredModifierSelections(productId, skuForError) {
 
 
 function json(body, statusCode = 200) {
-
   return {
     statusCode,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   };
-
 }
