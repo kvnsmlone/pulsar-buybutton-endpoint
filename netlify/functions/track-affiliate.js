@@ -7,17 +7,21 @@ exports.handler = async function(event, context) {
     const orderId = params.orderId || "";
     const code = params.code || "";
 
-    const url = `https://api.leaddyno.com/v1/purchases?key=ef0c0534045d3561102d7abcfc1ea64413e8f8a7`
-      + `&customer_email=${encodeURIComponent(email)}`
-      + `&purchase_amount=${encodeURIComponent(amount)}`
-      + `&purchase_code=${encodeURIComponent(orderId)}`
-      + `&code=${encodeURIComponent(code)}`;
+    const response = await fetch("https://api.leaddyno.com/v1/purchases", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer d040ace117263265e5054188122b7ae7b161259f",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        customer_email: email,
+        purchase_amount: amount,
+        purchase_code: orderId,
+        code: code
+      })
+    });
 
-    console.log("Calling LeadDyno:", url);
-
-    const response = await fetch(url);
     const result = await response.text();
-
     console.log("LeadDyno response:", result);
 
     return {
