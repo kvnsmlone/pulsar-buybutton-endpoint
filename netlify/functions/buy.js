@@ -30,28 +30,20 @@ const norm = (s = '') => s.toLowerCase().trim();
 
 exports.handler = async (event) => {
   try {
-
     if (!ADMIN_TOKEN) {
       return json({ error: 'Server not configured: missing BC_ADMIN_TOKEN' }, 500);
     }
 
     const qs = event.queryStringParameters || {};
-
-    // -----------------------------
-    // COOKIE + URL fallback
-    // -----------------------------
     const cookieHeader = event.headers.cookie || '';
 
     function getCookie(name) {
-      const match = cookieHeader.match(new RegExp('(^|; )' + name + '=([^;]+)'));
-      return match ? match[2] : null;
+      const match = cookieHeader.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
     const afmc = qs.afmc || getCookie('ld_affiliate');
 
-    // -----------------------------
-    // Plan logic
-    // -----------------------------
     const plan = norm(qs.plan || 'single');
     const qtyParam = parseInt(qs.qty || '1', 10);
     const skuParam = qs.sku;
@@ -61,7 +53,6 @@ exports.handler = async (event) => {
       PLAN_TO_SKU[plan] ||
       'PUL-30-SRV';
 
-    // 1️⃣ Variant lookup
     const vRes = await fetch(
       `${API_BASE}/catalog/variants?sku=${encodeURIComponent(sku)}&include_fields=id,product_id,sku`,
       {
@@ -80,20 +71,17 @@ exports.handler = async (event) => {
 
     const { id: variant_id, product_id } = vJson.data[0];
 
-    // 2️⃣ Modifiers
     let option_selections = MODS_BY_SKU[sku] || [];
 
     if (!option_selections.length) {
       option_selections = await getRequiredModifierSelections(product_id, sku);
     }
 
-    // 3️⃣ Quantity
     const quantity =
       sku === 'PUL-30-SRV-2PAK'
         ? 2
         : Math.max(1, Number.isFinite(qtyParam) ? qtyParam : 1);
 
-    // 4️⃣ Create cart
     const cRes = await fetch(
       `${API_BASE}/carts?include=redirect_urls`,
       {
@@ -127,22 +115,23 @@ exports.handler = async (event) => {
       return json({ error: 'No checkout_url returned' }, 502);
     }
 
-    // -----------------------------
-    // 🔥 FINAL FIX (PROPER URL HANDLING)
-    // -----------------------------
-    let finalCheckoutUrl = checkoutUrl;
+    const url = new URL(checkoutUrl);
 
     if (afmc) {
-      const url = new URL(checkoutUrl);
       url.searchParams.set('afmc', afmc);
-      finalCheckoutUrl = url.toString();
     }
 
-    console.log("FINAL CHECKOUT URL:", finalCheckoutUrl);
+    url.searchParams.set('ld_sku', sku);
+    url.searchParams.set('ld_qty', String(quantity));
+
+    console.log('PULSAR CHECKOUT REDIRECT:', url.toString());
 
     return {
       statusCode: 302,
-      headers: { Location: finalCheckoutUrl },
+      headers: {
+        Location: url.toString(),
+        'Cache-Control': 'no-store'
+      },
       body: ''
     };
 
@@ -154,13 +143,7 @@ exports.handler = async (event) => {
   }
 };
 
-
-// ------------------------------------------------------
-// Helpers
-// ------------------------------------------------------
-
 async function getRequiredModifierSelections(productId, skuForError) {
-
   const res = await fetch(
     `${API_BASE}/catalog/products/${productId}/modifiers?include_fields=id,display_name,type,required,is_required,option_values`,
     {
@@ -185,9 +168,7 @@ async function getRequiredModifierSelections(productId, skuForError) {
   const selections = [];
 
   for (const mod of requiredMods) {
-
     if (Array.isArray(mod.option_values) && mod.option_values.length > 0) {
-
       const picked =
         mod.option_values.find(v => v.is_default) ||
         mod.option_values[0];
@@ -208,11 +189,13 @@ async function getRequiredModifierSelections(productId, skuForError) {
   return selections;
 }
 
-
 function json(body, statusCode = 200) {
   return {
     statusCode,
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'Cache-Control': 'no-store'
+    },
     body: JSON.stringify(body)
   };
 }
